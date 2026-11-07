@@ -14,7 +14,7 @@
  * Install: through HACS (Dashboard) or copy to /config/www/ and add the resource
  *   /local/power-flow-strip.js  (JavaScript module). See README.md.
  *
- * Config:
+ * Config: use the visual editor in the dashboard UI, or YAML:
  *   type: custom:power-flow-strip
  *   entities:
  *     solar: sensor.sigen_0_plant_pv_power
@@ -41,7 +41,15 @@
  *   full_scale_power: 6000               # watts that fill the full height
  */
 
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
+
+const DEFAULTS = {
+  battery_positive_is_charging: true, grid_positive_is_import: true, zero_tolerance: 50,
+  min_flow_rate: 0.75, max_flow_rate: 6, min_expected_power: 0.01, max_expected_power: 2000,
+  mode: 'auto', night_entity: 'sun.sun', width: 640, height: 104, full_scale_power: 6000,
+};
+const isEmpty = v => v === undefined || v === null || v === '';
+const withoutEmpty = obj => Object.fromEntries(Object.entries(obj).filter(([, v]) => !isEmpty(v)));
 
 const COLORS = {
   solar: 'var(--energy-solar-color, #ff9800)',
@@ -76,29 +84,28 @@ const DASH = 14;           // particle spacing in px
 class PowerFlowStrip extends HTMLElement {
   setConfig(config) {
     if (!config || !config.entities) throw new Error('power-flow-strip: `entities` is required');
-    this._config = {
-      battery_positive_is_charging: true, grid_positive_is_import: true, zero_tolerance: 50,
-      min_flow_rate: 0.75, max_flow_rate: 6, min_expected_power: 0.01, max_expected_power: 2000,
-      mode: 'auto', night_entity: 'sun.sun', width: 640, height: 104, full_scale_power: 6000,
-      ...config,
-    };
+    // Empty values fall back to the defaults, so a field cleared in the editor can't break the card.
+    this._config = { ...DEFAULTS, ...withoutEmpty(config) };
     this._built = false;
     if (this._hass) this._update();
   }
   set hass(hass) { this._hass = hass; if (this._config) this._update(); }
   getCardSize() { return 2; }
 
-  // Shown when the card is added from the dashboard card picker; replace with your own sensors.
+  // Starts empty when added from the card picker; the sensors are chosen in the editor.
   static getStubConfig() {
-    return {
-      entities: {
-        solar: 'sensor.solar_power',
-        battery: 'sensor.battery_power',
-        battery_soc: 'sensor.battery_state_of_charge',
-        grid: 'sensor.grid_power',
-        home: 'sensor.home_power',
-      },
-    };
+    return { entities: {} };
+  }
+
+  static async getConfigElement() {
+    // Home Assistant lazy-loads ha-form; loading a built-in card's editor pulls it in.
+    // If this throws, Home Assistant falls back to its YAML editor.
+    if (!customElements.get('ha-form')) {
+      const helpers = await window.loadCardHelpers();
+      const card = await helpers.createCardElement({ type: 'button', entity: 'sun.sun' });
+      await card.constructor.getConfigElement();
+    }
+    return document.createElement('power-flow-strip-editor');
   }
 
   // ---------- states ----------
@@ -291,7 +298,8 @@ class PowerFlowStrip extends HTMLElement {
       // particles cross the ribbon in _rate(w) seconds, like PFC+'s dots
       const speed = (x2 - x1) / this._rate(w);
       const a2 = this._anim[id];
-      if (a2) { const rate = speed / DASH; if (Math.abs(a2.playbackRate - rate) > 0.02) (a2.updatePlaybackRate ? a2.updatePlaybackRate(rate) : (a2.playbackRate = rate)); }
+      // a rate of 0 (possible part-way through typing in the editor) gives an infinite speed, which would throw
+      if (a2) { const rate = speed / DASH; if (Number.isFinite(rate) && Math.abs(a2.playbackRate - rate) > 0.02) (a2.updatePlaybackRate ? a2.updatePlaybackRate(rate) : (a2.playbackRate = rate)); }
     }
 
     // bars
@@ -331,8 +339,125 @@ class PowerFlowStrip extends HTMLElement {
   }
 }
 
+// ---------- visual editor ----------
+const sensorField = (name, label, helper) => ({ name, label, helper, selector: { entity: { domain: 'sensor' } } });
+const toggleField = (name, label, helper) => ({ name, label, helper, selector: { boolean: {} } });
+const numberField = (name, label, unit, helper, min = 0, step = 1) => ({
+  name, label, helper, selector: { number: { mode: 'box', min, step, unit_of_measurement: unit } },
+});
+
+const editorSchema = showNightEntity => [
+  {
+    name: 'entities', type: 'expandable', title: 'Sensors', expanded: true,
+    schema: [
+      sensorField('solar', 'Solar power'),
+      sensorField('solar_today', 'Solar energy today', 'Shown under the solar value'),
+      sensorField('battery', 'Battery power'),
+      sensorField('battery_soc', 'Battery state of charge'),
+      sensorField('grid', 'Grid power'),
+      sensorField('grid_today', 'Grid import energy today', 'Shown under the grid value'),
+      sensorField('home', 'Home power', 'Worked out from the flows if left empty'),
+      sensorField('home_today', 'Home energy today', 'Shown under the home value'),
+    ],
+  },
+  toggleField('battery_positive_is_charging', 'Battery sensor is positive while charging', 'Turn off if positive means discharging'),
+  toggleField('grid_positive_is_import', 'Grid sensor is positive while importing', 'Turn off if positive means exporting'),
+  {
+    name: 'appearance', type: 'expandable', flatten: true, title: 'Appearance',
+    schema: [
+      {
+        name: 'mode', label: 'Text colour', required: true,
+        selector: {
+          select: {
+            mode: 'dropdown',
+            options: [
+              { value: 'auto', label: 'Automatic (follows the sun)' },
+              { value: 'light', label: 'Dark text, for light backgrounds' },
+              { value: 'dark', label: 'Light text, for dark backgrounds' },
+            ],
+          },
+        },
+      },
+      ...(showNightEntity
+        ? [{ name: 'night_entity', label: 'Night entity', helper: 'Light text is used while this is below_horizon', selector: { entity: {} } }]
+        : []),
+      numberField('width', 'Width', 'px'),
+      numberField('height', 'Height', 'px'),
+      numberField('full_scale_power', 'Full scale power', 'W', "Watts that fill the strip's full height. Raise it for a bigger system"),
+    ],
+  },
+  {
+    name: 'thresholds', type: 'expandable', title: 'Hide small flows',
+    schema: [
+      numberField('solar', 'Solar below', 'W'),
+      numberField('battery', 'Battery below', 'W'),
+      numberField('grid', 'Grid below', 'W'),
+      numberField('home', 'Home below', 'W'),
+    ],
+  },
+  {
+    name: 'advanced', type: 'expandable', flatten: true, title: 'Advanced',
+    schema: [
+      numberField('zero_tolerance', 'Zero tolerance', 'W', 'Readings at or below this count as zero'),
+      numberField('min_flow_rate', 'Fastest particle crossing', 's', 'Time to cross at maximum expected power and above', 0, 0.05),
+      numberField('max_flow_rate', 'Slowest particle crossing', 's', 'Time to cross at minimum expected power', 0, 0.05),
+      numberField('min_expected_power', 'Minimum expected power', 'W', undefined, 0, 0.01),
+      numberField('max_expected_power', 'Maximum expected power', 'W'),
+    ],
+  },
+];
+const SCHEMA_WITH_NIGHT_ENTITY = editorSchema(true);
+const SCHEMA_WITHOUT_NIGHT_ENTITY = editorSchema(false);
+
+// Shows the defaults for anything unset, and writes back only what differs from them,
+// so the saved config stays as short as hand-written YAML. Unknown keys are kept.
+class PowerFlowStripEditor extends HTMLElement {
+  setConfig(config) {
+    // Our own change coming back: leave the form alone, or a field being cleared
+    // to type a new value would snap back to its default.
+    if (JSON.stringify(config) === this._sent) return;
+    this._showData({ ...DEFAULTS, ...withoutEmpty(config), entities: config.entities || {}, thresholds: config.thresholds || {} });
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    if (this._form) this._form.hass = hass;
+  }
+
+  _showData(data) {
+    if (!this._form) {
+      const root = this.attachShadow({ mode: 'open' });
+      this._form = document.createElement('ha-form');
+      this._form.computeLabel = field => field.label;
+      this._form.computeHelper = field => field.helper;
+      this._form.addEventListener('value-changed', ev => this._changed(ev));
+      root.append(this._form);
+    }
+    this._form.hass = this._hass;
+    this._form.schema = data.mode === 'auto' ? SCHEMA_WITH_NIGHT_ENTITY : SCHEMA_WITHOUT_NIGHT_ENTITY;
+    this._form.data = data;
+  }
+
+  _changed(ev) {
+    ev.stopPropagation();
+    const data = ev.detail.value;
+    this._showData(data);
+
+    const config = withoutEmpty(data);
+    for (const [key, value] of Object.entries(DEFAULTS)) if (config[key] === value) delete config[key];
+    config.entities = withoutEmpty(data.entities || {});
+    const thresholds = withoutEmpty(data.thresholds || {});
+    if (Object.keys(thresholds).length) config.thresholds = thresholds;
+    else delete config.thresholds;
+
+    this._sent = JSON.stringify(config);
+    this.dispatchEvent(new CustomEvent('config-changed', { bubbles: true, composed: true, detail: { config } }));
+  }
+}
+
 if (!customElements.get('power-flow-strip')) {
   customElements.define('power-flow-strip', PowerFlowStrip);
+  customElements.define('power-flow-strip-editor', PowerFlowStripEditor);
   window.customCards = window.customCards || [];
   window.customCards.push({
     type: 'power-flow-strip', name: 'Power Flow Strip', preview: false,
