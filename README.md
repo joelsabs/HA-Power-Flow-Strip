@@ -76,6 +76,7 @@ At least `entities` must be present; any sensor you leave out is treated as 0 W.
 | `battery_positive_is_charging` | `true` | `true` if your battery sensor is positive while charging. Set `false` if positive means discharging. (Same as `invert_state: true` in Power Flow Card Plus.) |
 | `grid_positive_is_import` | `true` | `true` if your grid sensor is positive while importing |
 | `zero_tolerance` | `50` | Readings at or below this many watts count as zero |
+| `thresholds` | none | Hide flows to or from a source or consumer while its power is below a set number of watts. See [Thresholds](#thresholds) |
 | `full_scale_power` | `6000` | Watts that fill the strip's full height. Raise it for a bigger system |
 | `min_flow_rate` | `0.75` | Seconds for a particle to cross the strip at `max_expected_power` and above |
 | `max_flow_rate` | `6` | Seconds for a particle to cross the strip at `min_expected_power` |
@@ -85,6 +86,24 @@ At least `entities` must be present; any sensor you leave out is treated as 0 W.
 | `night_entity` | `sun.sun` | In `auto` mode, light text is used while this entity is `below_horizon` |
 | `width` | `640` | Width in pixels |
 | `height` | `104` | Height in pixels |
+
+### Thresholds
+
+Use `thresholds` to keep small flows out of the diagram, such as a grid connection that hovers a few hundred watts either side of zero. Set a number of watts for any of `solar`, `battery`, `grid` and `home`; leave out the ones you don't need.
+
+```yaml
+thresholds:
+  grid: 400     # hide grid import and export below 400 W
+  battery: 100  # hide battery charging and discharging below 100 W
+```
+
+While a node's power is below its threshold, its ribbons and label are hidden. A hidden battery still shows its state of charge as idle. Exactly the threshold is still shown.
+
+The threshold is checked against the node's total, not each ribbon, so 500 W of grid import split between the home and the battery stays visible with `grid: 400`.
+
+Hiding doesn't change the numbers. The other labels keep their real values, so Home still shows its full use when part of it comes from a hidden grid import, and its ribbon is thinner than the number suggests by the hidden amount. If a node's only flows are hidden, its label goes too: with `grid: 400` and a house running purely on a 300 W grid import, the Home label disappears as well.
+
+`zero_tolerance` is different: it treats a reading as zero before the flows are worked out, so the power moves to other flows rather than disappearing.
 
 ## On a floor plan (picture-elements)
 

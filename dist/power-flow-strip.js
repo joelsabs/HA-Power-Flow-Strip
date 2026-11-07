@@ -28,6 +28,8 @@
  *   battery_positive_is_charging: true   # same as PFC+ invert_state: true
  *   grid_positive_is_import: true
  *   zero_tolerance: 50                   # watts treated as zero
+ *   thresholds:                          # optional: hide flows to/from a node below these watts
+ *     grid: 400                          # keys: solar, battery, grid, home
  *   min_flow_rate: 0.75                  # seconds for a particle to cross at max power
  *   max_flow_rate: 6                     # ... and at min power
  *   min_expected_power: 0.01             # watts
@@ -39,7 +41,7 @@
  *   full_scale_power: 6000               # watts that fill the full height
  */
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 
 const COLORS = {
   solar: 'var(--energy-solar-color, #ff9800)',
@@ -129,7 +131,20 @@ class PowerFlowStrip extends HTMLElement {
     f['battery-grid'] = Math.min(toGrid - f['solar-grid'], fromBatt);
     f['grid-home'] = Math.max(fromGrid - f['grid-battery'], 0);
     f['battery-home'] = Math.max(fromBatt - f['battery-grid'], 0);
-    return { flows: f, solar, fromGrid, toGrid, toBatt, fromBatt, home: e.home ? this._watts(e.home) : null };
+    const home = e.home ? this._watts(e.home) : f['solar-home'] + f['grid-home'] + f['battery-home'];
+
+    // Thresholds only hide things: they run after the split, so the flows that
+    // stay visible keep their true values.
+    const t = c.thresholds || {}, below = (k, w) => w > 0 && w < t[k];
+    const hidden = {
+      solar: below('solar', solar),
+      battery: below('battery', toBatt + fromBatt),
+      grid: below('grid', fromGrid + toGrid),
+      home: below('home', home),
+    };
+    for (const [a, b] of FLOWS) if (hidden[a] || hidden[b]) f[fid(a, b)] = 0;
+
+    return { flows: f, solar, fromGrid, toGrid, toBatt: hidden.battery ? 0 : toBatt, fromBatt, home };
   }
 
   // PFC+ new flow rate model: seconds to cross, linear between max and min rate.
@@ -289,13 +304,13 @@ class PowerFlowStrip extends HTMLElement {
       'src-solar': [this._fmtW(r.solar), `Solar · ${this._kwh(e.solar_today)}`],
       'src-battery': [this._fmtW(r.fromBatt), `Battery · ${socTxt}`],
       'src-grid': [this._fmtW(r.fromGrid), `Grid · ${this._kwh(e.grid_today)}`],
-      'snk-home': [this._fmtW(r.home ?? inn.home), `Home · ${this._kwh(e.home_today)}`],
+      'snk-home': [this._fmtW(r.home), `Home · ${this._kwh(e.home_today)}`],
       'snk-battery': [r.toBatt > 0 ? this._fmtW(r.toBatt) : socTxt, r.toBatt > 0 ? `Battery · ${socTxt}` : 'Battery · idle'],
       'snk-grid': [this._fmtW(r.toGrid), 'Exporting'],
     };
     for (const [side, list, pos] of [['src', SOURCES, sp], ['snk', SINKS, kp]]) {
       const items = list.map(n => ({ n, y: pos[n.key] ? pos[n.key].y + pos[n.key].h / 2 : null }))
-        .filter(i => i.y !== null || (side === 'snk' && i.n.key === 'battery' && r.fromBatt === 0));
+        .filter(i => i.y !== null || (side === 'snk' && i.n.key === 'battery' && !sp.battery));
       // an idle battery keeps its label (state of charge) on the right, below Home
       for (const i of items) if (i.y === null) i.y = H - pad - 10;
       this._spread(items, 34, 16, H - 16);
