@@ -1,0 +1,26 @@
+name: Release
+
+# Push a tag like v1.0.0 to publish a GitHub release with the card attached.
+# HACS reads versions from releases (tags alone are not enough).
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the version in the card matches the tag
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          grep -q "const VERSION = '${tag}';" dist/power-flow-strip.js \
+            || { echo "dist/power-flow-strip.js says a different VERSION than tag ${GITHUB_REF_NAME}"; exit 1; }
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/power-flow-strip.js
+          generate_release_notes: true
