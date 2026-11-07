@@ -25,7 +25,7 @@ It has no background of its own, so it can sit straight on a floor plan or any o
 ### HACS
 
 1. In Home Assistant, open **HACS**, select the three-dot menu at the top right, then **Custom repositories**.
-2. Enter `https://github.com/YOUR_GITHUB_USERNAME/power-flow-strip`, choose the type **Dashboard**, and select **Add**.
+2. Enter `https://github.com/joelsabs/HA-Power-Flow-Strip`, choose the type **Dashboard**, and select **Add**.
 3. Search HACS for **Power Flow Strip**, open it and select **Download**.
 4. Reload your browser (on the Android or iOS app, pull down to refresh, or clear the app's frontend cache in its settings).
 
