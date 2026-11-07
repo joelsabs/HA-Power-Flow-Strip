@@ -337,7 +337,7 @@ if (!customElements.get('power-flow-strip')) {
   window.customCards.push({
     type: 'power-flow-strip', name: 'Power Flow Strip', preview: false,
     description: 'Slim live power flow (solar, battery, grid, home) for floor plans and dashboards',
-    documentationURL: 'https://github.com/YOUR_GITHUB_USERNAME/power-flow-strip',
+    documentationURL: 'https://github.com/joelsabs/HA-Power-Flow-Strip',
   });
   console.info(`%c POWER-FLOW-STRIP %c ${VERSION} `, 'color:#fff;background:#ff9800;font-weight:600', 'color:#ff9800;background:#1c1c1c');
 }
