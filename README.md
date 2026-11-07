@@ -15,6 +15,7 @@ It has no background of its own, so it can sit straight on a floor plan or any o
 - Particle speed follows the same flow-rate model as Power Flow Card Plus, so it feels the same if you are used to that card.
 - Ribbons and labels slide smoothly when the numbers change.
 - Battery and grid move between the left and right sides as they switch between supplying and taking power. An idle battery still shows its state of charge.
+- Set up from the dashboard's visual editor, with no YAML needed.
 - Light or dark text, chosen automatically from `sun.sun` (or forced).
 - Tap any label to open that sensor.
 - Uses Home Assistant's energy colours, so it matches the Energy dashboard and any theme that changes them.
@@ -38,6 +39,18 @@ HACS adds the dashboard resource for you.
 3. Reload your browser.
 
 ## Configuration
+
+### In the dashboard editor
+
+1. Edit your dashboard and select **Add card**.
+2. Open the **By card** tab and search for **Power Flow Strip**.
+3. Pick your sensors. The preview updates as you go, though at the default width you may need to scroll it sideways.
+
+Every option below is in the editor, and changes appear straight away. Anything left at its default stays out of the saved config.
+
+The editor works when the strip is a normal dashboard card. As an element on a picture-elements card it has to be set up in YAML; see [On a floor plan](#on-a-floor-plan-picture-elements).
+
+### In YAML
 
 ```yaml
 type: custom:power-flow-strip
